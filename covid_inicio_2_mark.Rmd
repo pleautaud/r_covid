@@ -1,0 +1,226 @@
+---
+title: "Análisis datos SARS-CoV2 reportados oficialmente en México"
+author:
+- P. Leautaud-Valenzuela
+- contacto@pablo-leautaud.com
+date: "18 de abril de 2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+Este documento presenta un análisis en lenguaje *R* de los datos abiertos referentes a los casos de SARS-CoV2 (también conocido como COVID-19), reportados por la Dirección General de Epidemiología de la Secretaría de Salud del Gobierno Federal de México, y los cuales pueden ser descargados del portal de [datos abiertos](https://www.gob.mx/salud/documentos/datos-abiertos-152127).
+
+### Paquetes necesarios para el script:
+```{r eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(markdown)
+library(hashmap)
+library(lubridate)
+library(dplyr)
+library(summarytools)
+library(tidyr)
+library(ggpubr)
+library(knitr)
+```
+
+### Semilla para valores aleatorios.
+Dado que valores aleatorios son requeridos en algunos procesos de R, se fija un número de semilla con fines de replicabilidad de los análisis.
+```{r eval=TRUE}
+set.seed(42)
+```
+
+### Importación de los datos:
+Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
+```{r eval=TRUE}
+datos <- read.csv("200422COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos2 <- datos
+```
+
+### Creación de los diccionarios:
+La tabla que originalmente se descarga integra los valores de cada variable mediante una codificación definida por los catálogos y diccionario de datos que también se puede encontrar en el [portal datos abiertos](https://www.gob.mx/salud/documentos/datos-abiertos-152127).
+```{r eval=TRUE}
+d_origen <- hashmap(c(1,2,99), c("USMER","Fuera USMER","No especificado"))
+d_sector <- hashmap(c(1,2,3,4,5,6,7,8,9,10,11,12,13,99), 
+                    c("CRUZ ROJA","DIF","ESTATAL","IMSS","IMSS-BIENESTAR","ISSSTE","MUNICIPAL","PEMEX",
+                       "PRIVADA","SEDENA","SEMAR","SSA","UNIVERSITARIO","NO ESPECIFICADO"))
+d_sexo <- hashmap(c(1,2,99), c("MUJER","HOMBRE","NO ESPECIFICADO"))
+d_tipo <- hashmap(c(1,2,99), c("AMBULATORIO","HOSPITALIZADO","NO ESPECIFICADO"))
+d_si_no <- hashmap(c(1,2,97,98,99), c("SI","NO","NO APLICA","SE IGNORA","NO ESPECIFICADO"))
+d_nacion <- hashmap(c(1,2,99), c("MEXICANA","EXTRANJERA","NO ESPECIFICADO"))
+d_resultado <- hashmap(c("1","2","3"),c("Positivo SARS-CoV-2","No positivo SARS-CoV-2","Resultado pendiente"))
+d_entidad <- hashmap(c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,
+                       36,97,98,99),
+                     c("AGU","BCN","BCS","CAM","COA","COL","CHP","CHH","CMX","DUR","GUA","GRO","HID","JAL",
+                       "MEX","MIC","MOR","NAY","NLE","OAX","PUE","QUE","ROO","SLP","SIN","SON","TAB","TAM",
+                       "TLA","VER","YUC","ZAC","EUM","N_A","S_I","N_E"))
+```
+
+### Preparación de la tabla
+Con base en los diccionarios definidos en la sección anterior, se procesan los datos de la tabla original para transformar los valores codificados en su nombres legibles, aprovechando para definir a las variables categóricas como factores.
+
+Durante este documento se retomaran los nombres originales de las variables, cuando se de este caso se reportan estos nombres *[dentro de corchetes y en itálicas]*.
+
+El primer paso consiste en integrar los identificadores de las entidades federativas y los municipios, para obtener una clave geoestadística compatible con la información del Instituto Nacional de Estadística y Geografía (INEGI):
+```{r eval=TRUE}
+datos2$MUNICIPIO_RES <- paste(sprintf("%02d", datos2$ENTIDAD_RES), sprintf("%03d", datos2$MUNICIPIO_RES))
+datos2$MUNICIPIO_RES <- as.factor(gsub("[[:space:]]", "", datos2$MUNICIPIO_RES))
+```
+
+El siguiente paso es la decodificación con base en los diccionarios definidos:
+```{r eval=TRUE}
+datos2$ORIGEN <- as.factor(d_origen[[datos2$ORIGEN]])
+datos2$SECTOR <- as.factor(d_sector[[datos2$SECTOR]])
+datos2$ENTIDAD_UM <- as.factor(d_entidad[[datos2$ENTIDAD_UM]])
+datos2$SEXO <- as.factor(d_sexo[[datos2$SEXO]])
+datos2$ENTIDAD_NAC <- as.factor(d_entidad[[datos2$ENTIDAD_NAC]])
+datos2$ENTIDAD_RES <- as.factor(d_entidad[[datos2$ENTIDAD_RES]])
+datos2$TIPO_PACIENTE  <- as.factor(d_tipo[[datos2$TIPO_PACIENTE]])
+datos2$INTUBADO <- as.factor(d_si_no[[datos2$INTUBADO]])
+datos2$NEUMONIA <- as.factor(d_si_no[[datos2$NEUMONIA]])
+datos2$NACIONALIDAD <- as.factor(d_nacion[[datos2$NACIONALIDAD]])
+datos2$EMBARAZO <- as.factor(d_si_no[[datos2$EMBARAZO]])
+datos2$HABLA_LENGUA_INDI <- as.factor(d_si_no[[datos2$HABLA_LENGUA_INDI]])
+datos2$DIABETES <- as.factor(d_si_no[[datos2$DIABETES]])
+datos2$EPOC <- as.factor(d_si_no[[datos2$EPOC]])
+datos2$ASMA <- as.factor(d_si_no[[datos2$ASMA]])
+datos2$INMUSUPR <- as.factor(d_si_no[[datos2$INMUSUPR]])
+datos2$HIPERTENSION <- as.factor(d_si_no[[datos2$HIPERTENSION]])
+datos2$OTRA_COM <- as.factor(d_si_no[[datos2$OTRA_COM]])
+datos2$CARDIOVASCULAR <- as.factor(d_si_no[[datos2$CARDIOVASCULAR]])
+datos2$OBESIDAD <- as.factor(d_si_no[[datos2$OBESIDAD]])
+datos2$RENAL_CRONICA <- as.factor(d_si_no[[datos2$RENAL_CRONICA]])
+datos2$TABAQUISMO <- as.factor(d_si_no[[datos2$TABAQUISMO]])
+datos2$OTRO_CASO <- as.factor(d_si_no[[datos2$OTRO_CASO]])
+datos2$RESULTADO <- as.factor(d_resultado[[datos2$RESULTADO]])
+datos2$MIGRANTE <- as.factor(d_si_no[[datos2$MIGRANTE]])
+datos2$UCI <- as.factor(d_si_no[[datos2$UCI]])
+
+levels(datos2$PAIS_NACIONALIDAD) <- c(levels(datos2$PAIS_NACIONALIDAD), "Se ignora")
+datos2$PAIS_NACIONALIDAD[datos2$PAIS_NACIONALIDAD == 99] <- "Se ignora"
+levels(datos2$PAIS_ORIGEN) <- c(levels(datos2$PAIS_ORIGEN), "No aplica")
+datos2$PAIS_ORIGEN[datos2$PAIS_ORIGEN == 97] <- "No aplica"
+```
+
+Del mismo modo se asigna el formato de fecha a las variables que así lo requieren:
+```{r eval=TRUE}
+datos$FECHA_ACTUALIZACION <- ymd(datos$FECHA_ACTUALIZACION)
+datos2$FECHA_INGRESO <- ymd(datos2$FECHA_INGRESO)
+datos2$FECHA_SINTOMAS <- ymd(datos2$FECHA_SINTOMAS)
+datos2$FECHA_DEF <- na_if(datos2$FECHA_DEF,"9999-99-99")
+datos2$FECHA_DEF <- ymd(datos2$FECHA_DEF)
+```
+
+Finalmente, se exporta la tabla procesada en un formato compatible con otros programas gestores de datos o de análisis estadístico:
+```{r eval=TRUE}
+write.csv(datos2, file = "tabla_procesada.csv")
+```
+
+### Estadística descriptiva
+En la siguiente tabla se reportan los parámetros estadísticos básicos para todas las variables que componen la tabla de datos procesada:
+```{r eval=TRUE}
+print(dfSummary(datos2, graph.magnif = 0.75), method = 'render', headings = FALSE)
+```
+
+# Análisis de los datos  
+Como primer paso debemos establecer cuantos de los registros presentaron un resultado con un diagnostico positivo ante SARS-Cov2, para lo cual temamos las categorías delimitadas por el factor *[RESULTADO]*:  
+
+* No positivo SARS-CoV-2  
+* Positivo SARS-CoV-2  
+* Resultado pendiente  
+
+Obteniendo los resultados reportados en la siguiente tabla:
+```{r results = 'asis'}
+tab_resultado <- count(datos2, Resultado = datos2$RESULTADO)
+tab_resultado["Porcentaje"] <- round(tab_resultado$n*100 / sum(tab_resultado$n),1)  
+kable(tab_resultado, format.args = list(big.mark = ","))
+```
+
+Y en la siguiente gráfica:
+```{r eval=TRUE,fig1, fig.align = "center"}
+tab_resultado_lab <- paste0(tab_resultado$Resultado, "\n (", tab_resultado$Porcentaje, "%)")
+ggpie(tab_resultado, "Porcentaje", label = tab_resultado_lab,
+      lab.pos = "in", lab.font = "black", lab.adjust = 0,
+      fill = "Resultado", color = "white",
+      palette = c("#C1D40E", "#FF9999", "#EAEAEA"))
+```
+
+Como se puede apreciar, **al día `r first(datos$FECHA_ACTUALIZACION)` se cuentan con `r format(tab_resultado$n[which(tab_resultado$Resultado == "Positivo SARS-CoV-2")],big.mark=",")` casos positivos ante SARS-CoV2**, en ese sentido, para continuar con el proceso de los datos se realiza una selección de variables retomando únicamente los casos positivos:
+```{r eval=TRUE}
+datos3 <- subset(datos2, RESULTADO == "Positivo SARS-CoV-2")
+```
+
+### Casos detectados por fecha
+En las siguientes gráficas podemos apreciar el número de casos diagnosticado por día (A), así como el acumulado del periodo total (B), tomado como referencia la fecha de ingreso del paciente *[FECHA_INGRESO]*:
+```{r eval=TRUE, fig2, fig.height = 5, fig.width = 10, fig.align = "center"}
+tab_fecha_in <- count(datos3, Fecha = datos3$FECHA_INGRESO)
+tab_fecha_in["Acumulado"] <- cumsum(tab_fecha_in$n)
+
+g_sum <- ggbarplot(tab_fecha_in, x = "Fecha", y = "n",
+                   fill = "steelblue", color = "black",)
+g_acum <- ggline(tab_fecha_in, x = "Fecha", y = "Acumulado",
+                 color = "steelblue", point.color = "black", point.size = 0.2) +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+
+ggarrange(g_sum, g_acum, labels = c("A)", "B)"), ncol = 2, nrow = 1)
+```
+
+### Modelo de crecimiento logístico
+Como se aprecia en la figura anterior (B), inicialmente se observa un crecimiento exponencial de los casos positivos detectados, sin embargo, como muchos otros procesos naturales, la propagación de enfermedades epidémicas suele seguir una función logística. Dicha función constituye un refinamiento del modelo exponencial para el crecimiento de una magnitud y modela la función sigmoidea de crecimiento de un conjunto.
+
+Esta funcion se representa como: $Y = \frac{\phi_1}{1+e^{-1\cdot \left ( \phi_2 + \phi_3\cdot x \right )}}$  
+
+Donde:  
+
+* $Y$, es la población (u otra variable) sujeta a un crecimiento logístico.  
+* $\phi_1$, es el primer parámetro *Phi*, el cual determina la asíntota de la curva.  
+* $\phi_2$, es el segundo parámetro *Phi*.
+* $\phi_3$, es el tercer parámetro *Phi*, el cual determina la velocidad del crecimiento.  
+* $x$, es la variable de entrada, en este caso los días transcurridos desde la primer detección.  
+
+En este sentido, se realiza un ajuste de los valores de casos positivos detectados a una función logística, para predecir los valores de casos positivos detectados en los próximos 45 días. Para tal efecto, se omiten los últimos tres días de registro, los cuales probablemente no cuenten con los valores de detección reales y tenga como efecto la formación de una falsa asíntota:
+```{r eval=TRUE}
+tab_fecha_in2 <- tab_fecha_in %>% mutate(Dif_dias = difftime(tab_fecha_in$Fecha, lag(tab_fecha_in$Fecha,1)))
+tab_fecha_in2$Dif_dias <- replace_na(tab_fecha_in2$Dif_dias,1)
+tab_fecha_in2$Dif_dias <- as.integer(tab_fecha_in2$Dif_dias)
+tab_fecha_in2["Dias"] <- cumsum(tab_fecha_in2$Dif_dias)
+
+datos_log <- data.frame(Dias = tab_fecha_in2$Dias, Acumulado = tab_fecha_in2$Acumulado)
+datos_log <- head(datos_log, nrow(datos_log) - 3)
+mod_log <- nls(Acumulado ~ SSlogis(Dias, phi1, phi2, phi3), data = datos_log)
+summary(mod_log)
+```
+
+Con base en el modelo ajustado, se realiza la predicción para tres tiempos futuros, considerando de la última fecha de registro, se obtienen los valores de casos positivos detectados para los próximos 15, 30 y 45 días:
+```{r eval=TRUE}
+p_log1 <- max(datos_log$Dias)
+p_log2 <- round(p_log1+5, -1)
+p_log3 <- p_log2 + 15
+p_log4 <- p_log3 + 15
+
+pred_log <- predict(mod_log,data.frame(Dias = c(p_log1, p_log2, p_log3, p_log4)))
+max_pred <-round(pred_log[4]+500,-3) 
+pred_log
+```
+ 
+Los resultados tanto del modelo logístico, como de los valores predichos, se ilustran en la siguiente gráfica:
+```{r eval=TRUE, fig3, fig.height = 8, fig.width = 10, fig.align = "center"}
+dia1_log <- min(datos3$FECHA_INGRESO)
+
+alpha <- coef(mod_log)  #Coeficientes
+plot(Acumulado ~ Dias, data = datos_log, main = "Modelo de crecimiento logístico para SARS-Cov2 en México", 
+     xlab = "Días", ylab = "Casos positivos acumulados", xlim = c(1, p_log4+15), ylim = c(1, max_pred))  #Casos
+curve(alpha[1]/(1 + exp(-(x - alpha[2])/alpha[3])), add = T, col = "blue")  #Modelo
+points(p_log2, pred_log[2], pch = "x", cex = 1.3)
+points(p_log3, pred_log[3], pch = "x", cex = 1.3)
+points(p_log4, pred_log[4], pch = "x", cex = 1.3)
+text(p_log2, pred_log[2], labels = paste0(dia1_log + p_log2, '\n', "[", round(pred_log[2], -2) ," casos]"), 
+     adj = c(1.1,0))
+text(p_log3, pred_log[3], labels = paste0(dia1_log + p_log3, '\n', "[", round(pred_log[3], -2) ," casos]"), 
+     adj = c(1.1,0))
+text(p_log4, pred_log[4], labels = paste0(dia1_log + p_log4, '\n', "[", round(pred_log[4], -2) ," casos]"), 
+     pos = 1, offset = 0.8)
+```
+
+Continuara...

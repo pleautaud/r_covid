@@ -23,6 +23,7 @@ library(summarytools)
 library(tidyr)
 library(ggpubr)
 library(knitr)
+library(kableExtra)
 ```
 
 ### Semilla para valores aleatorios.
@@ -34,7 +35,7 @@ set.seed(42)
 ### Importación de los datos:
 Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
 ```{r eval=TRUE}
-datos <- read.csv("200422COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos <- read.csv("200423COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
 datos2 <- datos
 ```
 
@@ -134,7 +135,8 @@ Obteniendo los resultados reportados en la siguiente tabla:
 ```{r results = 'asis'}
 tab_resultado <- count(datos2, Resultado = datos2$RESULTADO)
 tab_resultado["Porcentaje"] <- round(tab_resultado$n*100 / sum(tab_resultado$n),1)  
-kable(tab_resultado, format.args = list(big.mark = ","))
+kable(tab_resultado, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
 Y en la siguiente gráfica:
@@ -166,7 +168,7 @@ g_acum <- ggline(tab_fecha_in, x = "Fecha", y = "Acumulado",
 ggarrange(g_sum, g_acum, labels = c("A)", "B)"), ncol = 2, nrow = 1)
 ```
 
-### Modelo de crecimiento logístico
+#### Modelo de crecimiento logístico de casos detectados
 Como se aprecia en la figura anterior (B), inicialmente se observa un crecimiento exponencial de los casos positivos detectados, sin embargo, como muchos otros procesos naturales, la propagación de enfermedades epidémicas suele seguir una función logística. Dicha función constituye un refinamiento del modelo exponencial para el crecimiento de una magnitud y modela la función sigmoidea de crecimiento de un conjunto.
 
 Esta funcion se representa como: $Y = \frac{\phi_1}{1+e^{-1\cdot \left ( \phi_2 + \phi_3\cdot x \right )}}$  
@@ -220,6 +222,68 @@ text(p_log2, pred_log[2], labels = paste0(dia1_log + p_log2, '\n', "[", round(pr
 text(p_log3, pred_log[3], labels = paste0(dia1_log + p_log3, '\n', "[", round(pred_log[3], -2) ," casos]"), 
      adj = c(1.1,0))
 text(p_log4, pred_log[4], labels = paste0(dia1_log + p_log4, '\n', "[", round(pred_log[4], -2) ," casos]"), 
+     pos = 1, offset = 0.8)
+```
+
+### Defunciones de casos positivos SARS-CoV2 registradas por fecha
+En las siguientes gráficas podemos apreciar el número de muertes por día (A), así como el acumulado del periodo total (B), tomado como referencia la fecha de defunción *[FECHA_DEF]* de los pacientes diagnosticados con SARS-CoV2:
+```{r eval=TRUE, fig4, fig.height = 5, fig.width = 10, fig.align = "center"}
+tab_fecha_def <- count(datos3, Fecha = datos3$FECHA_DEF)
+#tab_fecha_def <- rbind(data.frame(Fecha = as.Date(dia1_log), n = 0),tab_fecha_def) #Fecha inicial = casos positivos
+tab_fecha_def<- head(tab_fecha_def, nrow(tab_fecha_def) - 1)
+tab_fecha_def["Acumulado"] <- cumsum(tab_fecha_def$n)
+
+g_sum_def <- ggbarplot(tab_fecha_def, x = "Fecha", y = "n",
+                   fill = "steelblue", color = "black",)
+g_acum_def <- ggline(tab_fecha_def, x = "Fecha", y = "Acumulado",
+                 color = "steelblue", point.color = "black", point.size = 0.2) +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+
+ggarrange(g_sum_def, g_acum_def, labels = c("A)", "B)"), ncol = 2, nrow = 1)
+```
+
+#### Modelo de crecimiento logístico de defunciones registradas
+En consideración de estos datos, tenemos que **al día `r first(datos$FECHA_ACTUALIZACION)` se cuentan con `r format(sum(tab_fecha_def$n),big.mark=",")` defunciones de personas diagnosticadas con SARS-CoV2**, en ese sentido, tembién se realiza un ajuste de estos datos a una función logística, e igualmente predecir los valores de defunciones en los próximos 45 días. Para tal efecto, se omiten los últimos tres días de registro, los cuales probablemente no cuenten con los valores de detección reales y tenga como efecto la formación de una falsa asíntota:
+```{r eval=TRUE}
+tab_fecha_def2 <- tab_fecha_def %>% mutate(Dif_dias = difftime(tab_fecha_def$Fecha, lag(tab_fecha_def$Fecha,1)))
+tab_fecha_def2$Dif_dias <- replace_na(tab_fecha_def2$Dif_dias,1)
+tab_fecha_def2$Dif_dias <- as.integer(tab_fecha_def2$Dif_dias)
+tab_fecha_def2["Dias"] <- cumsum(tab_fecha_def2$Dif_dias)
+
+datos_def_log <- data.frame(Dias = tab_fecha_def2$Dias, Acumulado = tab_fecha_def2$Acumulado)
+datos_def_log <- head(datos_def_log, nrow(datos_def_log) - 3)
+mod_def_log <- nls(Acumulado ~ SSlogis(Dias, phi1, phi2, phi3), data = datos_def_log)
+summary(mod_def_log)
+```
+
+Con base en el modelo ajustado, se realiza la predicción para tres tiempos futuros, considerando de la última fecha de registro, se obtienen los valores de casos positivos detectados para los próximos 15, 30 y 45 días:
+```{r eval=TRUE}
+p_def_log1 <- max(datos_def_log$Dias)
+p_def_log2 <- round(p_def_log1+5, -1)
+p_def_log3 <- p_def_log2 + 15
+p_def_log4 <- p_def_log3 + 15
+
+pred_def_log <- predict(mod_def_log,data.frame(Dias = c(p_def_log1, p_def_log2, p_def_log3, p_def_log4)))
+max_pred_def <-round(pred_def_log[4]+150,-2) 
+pred_def_log
+```
+
+Los resultados tanto del modelo logístico, como de los valores predichos, se ilustran en la siguiente gráfica:
+```{r eval=TRUE, fig5, fig.height = 8, fig.width = 10, fig.align = "center"}
+dia1_def_log <- min(tab_fecha_def$Fecha)
+
+alpha2 <- coef(mod_def_log)  #Coeficientes
+plot(Acumulado ~ Dias, data = datos_def_log, main = "Modelo de crecimiento logístico para defunciones por SARS-Cov2", 
+     xlab = "Días", ylab = "Defunciones acumuladas", xlim = c(1, p_def_log4+15), ylim = c(1, max_pred_def))  #Casos
+curve(alpha2[1]/(1 + exp(-(x - alpha2[2])/alpha2[3])), add = T, col = "blue")  #Modelo
+points(p_def_log2, pred_def_log[2], pch = "x", cex = 1.3)
+points(p_def_log3, pred_def_log[3], pch = "x", cex = 1.3)
+points(p_def_log4, pred_def_log[4], pch = "x", cex = 1.3)
+text(p_def_log2, pred_def_log[2], labels = paste0(dia1_def_log + p_def_log2, '\n', "[", round(pred_def_log[2], -1) ," defunciones]"), 
+     adj = c(1.1,0))
+text(p_def_log3, pred_def_log[3], labels = paste0(dia1_def_log + p_def_log3, '\n', "[", round(pred_def_log[3], -1) ," defunciones]"), 
+     pos = 3, offset = 0.8)
+text(p_def_log4, pred_def_log[4], labels = paste0(dia1_def_log + p_def_log4, '\n', "[", round(pred_def_log[4], -1) ," defunciones]"), 
      pos = 1, offset = 0.8)
 ```
 

@@ -24,6 +24,7 @@ library(tidyr)
 library(ggpubr)
 library(knitr)
 library(kableExtra)
+library(reshape2)
 ```
 
 ### Semilla para valores aleatorios.
@@ -35,8 +36,9 @@ set.seed(42)
 ### Importación de los datos:
 Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
 ```{r eval=TRUE}
-datos <- read.csv("200423COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos <- read.csv("200428COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
 datos2 <- datos
+datos2$Num <- 1
 ```
 
 ### Creación de los diccionarios:
@@ -82,7 +84,7 @@ datos2$INTUBADO <- as.factor(d_si_no[[datos2$INTUBADO]])
 datos2$NEUMONIA <- as.factor(d_si_no[[datos2$NEUMONIA]])
 datos2$NACIONALIDAD <- as.factor(d_nacion[[datos2$NACIONALIDAD]])
 datos2$EMBARAZO <- as.factor(d_si_no[[datos2$EMBARAZO]])
-datos2$HABLA_LENGUA_INDI <- as.factor(d_si_no[[datos2$HABLA_LENGUA_INDI]])
+datos2$HABLA_LENGUA_INDIG <- as.factor(d_si_no[[datos2$HABLA_LENGUA_INDIG]])
 datos2$DIABETES <- as.factor(d_si_no[[datos2$DIABETES]])
 datos2$EPOC <- as.factor(d_si_no[[datos2$EPOC]])
 datos2$ASMA <- as.factor(d_si_no[[datos2$ASMA]])
@@ -285,6 +287,147 @@ text(p_def_log3, pred_def_log[3], labels = paste0(dia1_def_log + p_def_log3, '\n
      pos = 3, offset = 0.8)
 text(p_def_log4, pred_def_log[4], labels = paste0(dia1_def_log + p_def_log4, '\n', "[", round(pred_def_log[4], -1) ," defunciones]"), 
      pos = 1, offset = 0.8)
+```
+
+### Comorbilidad en los casos de SARS-CoV2
+En la información provista por la Dirección General de Epidemiología también se reportan algunos datos de comorbilidad, entendida ésta última como la presencia de uno o más trastornos (o enfermedades) además de la enfermedad o trastorno primario, en este caso el SARS-Cov2.  
+
+A continuacion se presentan una serie de tablas donde se incorporan estos datos, expresados por la suma total de casos, asi como su porcentaje relativo al total de presencia o ausencia del transtorno secundario (solo se incluye código para el primer dato):  
+
+#### Diabetes:
+La diabetes mellitus (DM) es un conjunto de trastornos metabólicos, cuya característica común principal es la presencia de concentraciones elevadas de glucosa en la sangre de manera persistente o crónica, debido ya sea a un defecto en la producción de insulina, a una resistencia a la acción de ella para utilizar la glucosa, a un aumento en la producción de glucosa o a una combinación de estas causas.
+```{r results = 'asis'}
+morb_diab <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       DIABETES %in% c("NO","SI"))
+morb_diab <- group_by(morb_diab, DIABETES, RESULTADO)
+morb_diab <- summarise(morb_diab, suma = sum(Num))
+
+morb_diab_t <- dcast(morb_diab, RESULTADO ~ DIABETES, value.var = "suma")
+morb_diab_t["No"] <- paste0(round(morb_diab_t$NO*100 / sum(morb_diab_t$NO),1)," %")
+morb_diab_t["Si"] <- paste0(round(morb_diab_t$SI*100 / sum(morb_diab_t$SI),1)," %") 
+
+kable(morb_diab_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Asma:
+El asma es una enfermedad del sistema respiratorio caracterizada por una inflamación crónica de la vía aérea, cuyas manifestaciones clínicas son heterogéneas y variables en el tiempo y consisten en sibilancias, dificultad respiratoria, opresión torácica y tos.
+```{r results = 'asis', echo = FALSE}
+morb_asma <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       ASMA %in% c("NO","SI"))
+morb_asma <- group_by(morb_asma, ASMA, RESULTADO)
+morb_asma <- summarise(morb_asma, suma = sum(Num))
+
+morb_asma_t <- dcast(morb_asma, RESULTADO ~ ASMA, value.var = "suma")
+morb_asma_t["No"] <- paste0(round(morb_asma_t$NO*100 / sum(morb_asma_t$NO),1)," %")
+morb_asma_t["Si"] <- paste0(round(morb_asma_t$SI*100 / sum(morb_asma_t$SI),1)," %") 
+
+kable(morb_asma_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Inmunosupresión:
+La inmunosupresión se define como la inhibición de uno o más componentes del sistema inmunitario adaptativo o innato (la inflamación), que puede producirse como resultado de una enfermedad subyacente o de forma intencional mediante el uso de medicamentos (llamados inmunosupresores) u otros tratamientos, como radiación o cirugía (ablación del bazo), con el propósito de prevenir o tratar el rechazo de un trasplante o una enfermedad autoinmune.
+```{r results = 'asis', echo = FALSE}
+morb_inmu <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       INMUSUPR %in% c("NO","SI"))
+morb_inmu <- group_by(morb_inmu, INMUSUPR, RESULTADO)
+morb_inmu <- summarise(morb_inmu, suma = sum(Num))
+
+morb_inmu_t <- dcast(morb_inmu, RESULTADO ~ INMUSUPR, value.var = "suma")
+morb_inmu_t["No"] <- paste0(round(morb_inmu_t$NO*100 / sum(morb_inmu_t$NO),1)," %")
+morb_inmu_t["Si"] <- paste0(round(morb_inmu_t$SI*100 / sum(morb_inmu_t$SI),1)," %") 
+
+kable(morb_inmu_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Hipertensión:
+La hipertensión arterial (HTA) es una enfermedad crónica caracterizada por un incremento continuo de las cifras de la presión sanguínea por arriba de los límites sobre los cuales aumenta el riesgo cardiovascular. 
+```{r results = 'asis', echo = FALSE}
+morb_hipe <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       HIPERTENSION %in% c("NO","SI"))
+morb_hipe <- group_by(morb_hipe, HIPERTENSION, RESULTADO)
+morb_hipe <- summarise(morb_hipe, suma = sum(Num))
+
+morb_hipe_t <- dcast(morb_hipe, RESULTADO ~ HIPERTENSION, value.var = "suma")
+morb_hipe_t["No"] <- paste0(round(morb_hipe_t$NO*100 / sum(morb_hipe_t$NO),1)," %")
+morb_hipe_t["Si"] <- paste0(round(morb_hipe_t$SI*100 / sum(morb_hipe_t$SI),1)," %") 
+
+kable(morb_hipe_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Enfermedad cardiovascular:
+El término enfermedades cardiovasculares es usado para referirse a todo tipo de enfermedad de las arterias coronarias, que son relacionadas con el corazón o los vasos sanguíneos, (arterias y venas). Este término describe cualquier enfermedad que afecte al sistema cardiovascular (usado en MeSH), es utilizado comúnmente para referirse a aquellos relacionados con la arteriosclerosis (enfermedades en las arterias).
+```{r results = 'asis', echo = FALSE}
+morb_card <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       CARDIOVASCULAR %in% c("NO","SI"))
+morb_card <- group_by(morb_card, CARDIOVASCULAR, RESULTADO)
+morb_card <- summarise(morb_card, suma = sum(Num))
+
+morb_card_t <- dcast(morb_card, RESULTADO ~ CARDIOVASCULAR, value.var = "suma")
+morb_card_t["No"] <- paste0(round(morb_card_t$NO*100 / sum(morb_card_t$NO),1)," %")
+morb_card_t["Si"] <- paste0(round(morb_card_t$SI*100 / sum(morb_card_t$SI),1)," %") 
+
+kable(morb_card_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Obsesidad:
+La obesidad se caracteriza por acumulación excesiva de grasa o hipertrofia general del tejido adiposo en el cuerpo; es decir, cuando la reserva natural de energía de los humanos y otros mamíferos —almacenada en forma de grasa corporal— se incrementa hasta un punto en que pone en riesgo la salud o la vida. 
+```{r results = 'asis', echo = FALSE}
+morb_obes <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       OBESIDAD %in% c("NO","SI"))
+morb_obes <- group_by(morb_obes, OBESIDAD, RESULTADO)
+morb_obes <- summarise(morb_obes, suma = sum(Num))
+
+morb_obes_t <- dcast(morb_obes, RESULTADO ~ OBESIDAD, value.var = "suma")
+morb_obes_t["No"] <- paste0(round(morb_obes_t$NO*100 / sum(morb_obes_t$NO),1)," %")
+morb_obes_t["Si"] <- paste0(round(morb_obes_t$SI*100 / sum(morb_obes_t$SI),1)," %") 
+
+kable(morb_obes_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Enfermedad renal crónica:
+La enfermedad renal crónica (ERC) o insuficiencia renal crónica (IRC) es una pérdida progresiva (por tres meses o más) e irreversible de las funciones renales. Como consecuencia, los riñones pierden su capacidad para eliminar desechos, concentrar la orina y conservar los electrolitos en la sangre.
+```{r results = 'asis', echo = FALSE}
+morb_renal <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       RENAL_CRONICA %in% c("NO","SI"))
+morb_renal <- group_by(morb_renal, RENAL_CRONICA, RESULTADO)
+morb_renal <- summarise(morb_renal, suma = sum(Num))
+
+morb_renal_t <- dcast(morb_renal, RESULTADO ~ RENAL_CRONICA, value.var = "suma")
+morb_renal_t["No"] <- paste0(round(morb_renal_t$NO*100 / sum(morb_renal_t$NO),1)," %")
+morb_renal_t["Si"] <- paste0(round(morb_renal_t$SI*100 / sum(morb_renal_t$SI),1)," %") 
+
+kable(morb_renal_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+#### Tabaquismo:
+El tabaquismo es la adicción al tabaco fumado, provocada principalmente por uno de sus componentes más activos: la nicotina. El consumo habitual de tabaco produce enfermedades nocivas para la salud de la persona que lo consume. 
+```{r results = 'asis', echo = FALSE}
+morb_tabaq <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
+                       TABAQUISMO %in% c("NO","SI"))
+morb_tabaq <- group_by(morb_tabaq, TABAQUISMO, RESULTADO)
+morb_tabaq <- summarise(morb_tabaq, suma = sum(Num))
+
+morb_tabaq_t <- dcast(morb_tabaq, RESULTADO ~ TABAQUISMO, value.var = "suma")
+morb_tabaq_t["No"] <- paste0(round(morb_tabaq_t$NO*100 / sum(morb_tabaq_t$NO),1)," %")
+morb_tabaq_t["Si"] <- paste0(round(morb_tabaq_t$SI*100 / sum(morb_tabaq_t$SI),1)," %") 
+
+kable(morb_tabaq_t, format.args = list(big.mark = ",")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
 ```
 
 Continuara...

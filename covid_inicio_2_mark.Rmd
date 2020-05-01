@@ -3,7 +3,7 @@ title: "Análisis datos SARS-CoV2 reportados oficialmente en México"
 author:
 - P. Leautaud-Valenzuela
 - contacto@pablo-leautaud.com
-date: "18 de abril de 2020"
+date: "Compilado el: `r format(Sys.time(), '%Y/%m/%d')`"
 output: html_document
 ---
 ```{r setup, include=FALSE}
@@ -25,6 +25,8 @@ library(ggpubr)
 library(knitr)
 library(kableExtra)
 library(reshape2)
+library(sf)
+library(tmap)
 ```
 
 ### Semilla para valores aleatorios.
@@ -36,7 +38,7 @@ set.seed(42)
 ### Importación de los datos:
 Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
 ```{r eval=TRUE}
-datos <- read.csv("200428COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos <- read.csv("200430COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
 datos2 <- datos
 datos2$Num <- 1
 ```
@@ -428,6 +430,60 @@ morb_tabaq_t["Si"] <- paste0(round(morb_tabaq_t$SI*100 / sum(morb_tabaq_t$SI),1)
 kable(morb_tabaq_t, format.args = list(big.mark = ",")) %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
   add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
+```
+
+### Distribución espacial de los casos
+Un aspecto fundamental de los datos reportados de SARS-Cov2 es su espacialidad, es decir, como es la distibucion de estos datos en la geografía del país. En este sentidoi, se realizan unos ejercicios básicos de cartografia en R, para lo cual se realiza una preparación de los datos espaciales, que de manera general se resume en la integracón de la información de casos reportados al marco geoestadístico nacional (estatal y municipal) para poder realizar los mapas consecuentes:
+```{r eval=TRUE}
+s_mun <- st_read("SHP/municipios_2015.shp")
+casos_mun <- count(datos3, CVEMUN = datos3$MUNICIPIO_RES)
+
+geo_mun <- left_join(s_mun, casos_mun)
+geo_mun$Casos_100k <- (geo_mun$n/geo_mun$pob_tot)*100000
+geo_mun$Casos_km2 <- (geo_mun$n/geo_mun$sup_km2)
+```
+
+Como se puede apreciar, se generan dos variables mas con base en los diagnósticos positivos de SARS-CoV2:  
+
+* Casos por cada 100 mil habitantes.  
+* Casos por kilómetro cuadrado.  
+
+Lo anterior con miras de tener información comparable entre las diferentes demarcaciones, sin caer en sesgos por la diferencia entre la superficie y población total de dichas entidades.
+
+#### Ciudad de México (CDMX)
+```{r eval=TRUE, fig6, fig.height = 12, fig.width = 8, fig.align = "center"}
+tmap_mode("plot")
+bb_cdmx <- st_bbox(c(xmin = -99.4, xmax = -98.9, ymax = 19.64, ymin = 19))
+geo_cdmx <- filter(geo_mun, AREAS_GE_2 == "09")
+mapa_cdmx <- tm_shape(geo_cdmx, bbox = bb_cdmx) + 
+   tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
+               n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por Km^2") + 
+   tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
+              n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette="-RdYlBu", contrast=1, scale = 3, title.size="Casos totales", 
+              title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
+   tm_compass() + tm_scale_bar() +
+   tm_grid(n.x = 3, n.y = 4)
+mapa_cdmx
+```
+
+#### Jalisco (JAL)
+```{r eval=TRUE, fig7, fig.height = 8, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+tmap_mode("plot")
+bb_jal <- st_bbox(c(xmin = -106, xmax = -101.5, ymax = 22.9, ymin = 18.7))
+geo_jal <- filter(geo_mun, AREAS_GE_2 == "14")
+mapa_jal <- tm_shape(geo_jal, bbox = bb_jal) + 
+   tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
+               n = 5, style = "bclust", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por Km^2") + 
+   tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
+              n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette="-RdYlBu", contrast=1, scale = 1, title.size="Casos totales", 
+              title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
+   tm_compass() + tm_scale_bar() +
+   tm_grid(n.x = 3, n.y = 4)
+mapa_jal
 ```
 
 Continuara...

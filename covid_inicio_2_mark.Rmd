@@ -4,7 +4,13 @@ author:
 - P. Leautaud-Valenzuela
 - contacto@pablo-leautaud.com
 date: "Compilado el: `r format(Sys.time(), '%Y/%m/%d')`"
-output: html_document
+output:
+  html_document:
+    theme: sandstone
+    fig_caption: true
+    toc: true
+    toc_depth: 4
+    toc_float: true
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -38,7 +44,7 @@ set.seed(42)
 ### Importación de los datos:
 Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
 ```{r eval=TRUE}
-datos <- read.csv("200430COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos <- read.csv("200511COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
 datos2 <- datos
 datos2$Num <- 1
 ```
@@ -125,7 +131,8 @@ write.csv(datos2, file = "tabla_procesada.csv")
 ### Estadística descriptiva
 En la siguiente tabla se reportan los parámetros estadísticos básicos para todas las variables que componen la tabla de datos procesada:
 ```{r eval=TRUE}
-print(dfSummary(datos2, graph.magnif = 0.75), method = 'render', headings = FALSE)
+print(dfSummary(datos2, graph.magnif = 0.75, valid.col = FALSE, na.col = FALSE, 
+      max.distinct.values = 5, headings = FALSE),method = 'render')
 ```
 
 # Análisis de los datos  
@@ -175,7 +182,7 @@ ggarrange(g_sum, g_acum, labels = c("A)", "B)"), ncol = 2, nrow = 1)
 #### Modelo de crecimiento logístico de casos detectados
 Como se aprecia en la figura anterior (B), inicialmente se observa un crecimiento exponencial de los casos positivos detectados, sin embargo, como muchos otros procesos naturales, la propagación de enfermedades epidémicas suele seguir una función logística. Dicha función constituye un refinamiento del modelo exponencial para el crecimiento de una magnitud y modela la función sigmoidea de crecimiento de un conjunto.
 
-Esta funcion se representa como: $Y = \frac{\phi_1}{1+e^{-1\cdot \left ( \phi_2 + \phi_3\cdot x \right )}}$  
+Esta función se representa como: $Y = \frac{\phi_1}{1+e^{-1\cdot \left ( \phi_2 + \phi_3\cdot x \right )}}$  
 
 Donde:  
 
@@ -236,6 +243,8 @@ tab_fecha_def <- count(datos3, Fecha = datos3$FECHA_DEF)
 #tab_fecha_def <- rbind(data.frame(Fecha = as.Date(dia1_log), n = 0),tab_fecha_def) #Fecha inicial = casos positivos
 tab_fecha_def<- head(tab_fecha_def, nrow(tab_fecha_def) - 1)
 tab_fecha_def["Acumulado"] <- cumsum(tab_fecha_def$n)
+mortalidad <- round(((sum(tab_fecha_def$n) * 100) / 
+                       tab_resultado$n[which(tab_resultado$Resultado == "Positivo SARS-CoV-2")]),1)
 
 g_sum_def <- ggbarplot(tab_fecha_def, x = "Fecha", y = "n",
                    fill = "steelblue", color = "black",)
@@ -247,7 +256,7 @@ ggarrange(g_sum_def, g_acum_def, labels = c("A)", "B)"), ncol = 2, nrow = 1)
 ```
 
 #### Modelo de crecimiento logístico de defunciones registradas
-En consideración de estos datos, tenemos que **al día `r first(datos$FECHA_ACTUALIZACION)` se cuentan con `r format(sum(tab_fecha_def$n),big.mark=",")` defunciones de personas diagnosticadas con SARS-CoV2**, en ese sentido, tembién se realiza un ajuste de estos datos a una función logística, e igualmente predecir los valores de defunciones en los próximos 45 días. Para tal efecto, se omiten los últimos tres días de registro, los cuales probablemente no cuenten con los valores de detección reales y tenga como efecto la formación de una falsa asíntota:
+En consideración de estos datos, tenemos que **al día `r first(datos$FECHA_ACTUALIZACION)` se cuentan con `r format(sum(tab_fecha_def$n),big.mark=",")` defunciones de personas diagnosticadas con SARS-CoV2 (tasa de mortalidad de `r mortalidad`%)**, en ese sentido, también se realiza un ajuste de estos datos a una función logística, e igualmente predecir los valores de defunciones en los próximos 45 días. Para tal efecto, se omiten los últimos tres días de registro, los cuales probablemente no cuenten con los valores de detección reales y tenga como efecto la formación de una falsa asíntota:
 ```{r eval=TRUE}
 tab_fecha_def2 <- tab_fecha_def %>% mutate(Dif_dias = difftime(tab_fecha_def$Fecha, lag(tab_fecha_def$Fecha,1)))
 tab_fecha_def2$Dif_dias <- replace_na(tab_fecha_def2$Dif_dias,1)
@@ -291,10 +300,26 @@ text(p_def_log4, pred_def_log[4], labels = paste0(dia1_def_log + p_def_log4, '\n
      pos = 1, offset = 0.8)
 ```
 
+#### Tasa de mortalidad por SARS-CoV2
+Bajo esta misma tesitura, tenemos que **al día `r first(datos$FECHA_ACTUALIZACION)` se cuentan con una tasa de mortalidad de `r mortalidad`%**, en ese sentido, en las siguiente figura tenemos en la gráfica A) los cambios en la tasa de mortalidad en relación al tiempo transcurrido desde la primer defunción, y en la gráfica B) la relación entre la tasa de mortalidad y los casos positivos de SARS-CoV2 registrados por día:
+```{r eval=TRUE, fig6, fig.height = 5, fig.width = 10, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+tab_mortalidad <- inner_join(tab_fecha_def,tab_fecha_in, by = c("Fecha" = "Fecha"))
+tab_mortalidad["Mortalidad"] <- round((tab_mortalidad$Acumulado.x * 100) / tab_mortalidad$Acumulado.y, 2)
+tab_mortalidad <- head(tab_mortalidad, nrow(tab_mortalidad) - 5)
+
+g_mort1 <- ggline(tab_mortalidad, x = "Fecha", y = "Mortalidad",
+                  color = "steelblue", point.color = "black", point.size = 0.2)
+g_mort2 <- ggscatter(tab_mortalidad, x = "n.y", y = "Mortalidad", xlab = "Casos +SARS-CoV2 por día",
+                     add = "loess", conf.int = TRUE)
+
+ggarrange(g_mort1, g_mort2, labels = c("A)", "B)"), ncol = 2, nrow = 1)
+```
+
+
 ### Comorbilidad en los casos de SARS-CoV2
 En la información provista por la Dirección General de Epidemiología también se reportan algunos datos de comorbilidad, entendida ésta última como la presencia de uno o más trastornos (o enfermedades) además de la enfermedad o trastorno primario, en este caso el SARS-Cov2.  
 
-A continuacion se presentan una serie de tablas donde se incorporan estos datos, expresados por la suma total de casos, asi como su porcentaje relativo al total de presencia o ausencia del transtorno secundario (solo se incluye código para el primer dato):  
+A continuación se presentan una serie de tablas donde se incorporan estos datos, expresados por la suma total de casos, así como su porcentaje relativo al total de presencia o ausencia del trastorno secundario (solo se incluye código para el primer dato):  
 
 #### Diabetes:
 La diabetes mellitus (DM) es un conjunto de trastornos metabólicos, cuya característica común principal es la presencia de concentraciones elevadas de glucosa en la sangre de manera persistente o crónica, debido ya sea a un defecto en la producción de insulina, a una resistencia a la acción de ella para utilizar la glucosa, a un aumento en la producción de glucosa o a una combinación de estas causas.
@@ -381,7 +406,7 @@ kable(morb_card_t, format.args = list(big.mark = ",")) %>%
   add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
 ```
 
-#### Obsesidad:
+#### Obesidad:
 La obesidad se caracteriza por acumulación excesiva de grasa o hipertrofia general del tejido adiposo en el cuerpo; es decir, cuando la reserva natural de energía de los humanos y otros mamíferos —almacenada en forma de grasa corporal— se incrementa hasta un punto en que pone en riesgo la salud o la vida. 
 ```{r results = 'asis', echo = FALSE}
 morb_obes <- filter(datos2, RESULTADO %in% c("No positivo SARS-CoV-2","Positivo SARS-CoV-2") & 
@@ -432,11 +457,18 @@ kable(morb_tabaq_t, format.args = list(big.mark = ",")) %>%
   add_header_above(c(" " = 1, "Total" = 2, "Porcentaje" = 2))
 ```
 
-### Distribución espacial de los casos
-Un aspecto fundamental de los datos reportados de SARS-Cov2 es su espacialidad, es decir, como es la distibucion de estos datos en la geografía del país. En este sentidoi, se realizan unos ejercicios básicos de cartografia en R, para lo cual se realiza una preparación de los datos espaciales, que de manera general se resume en la integracón de la información de casos reportados al marco geoestadístico nacional (estatal y municipal) para poder realizar los mapas consecuentes:
+# Distribución espacial de los casos
+Un aspecto fundamental de los datos reportados de SARS-Cov2 es su espacialidad, es decir, como es la distribución de estos datos en la geografía del país. En este sentido, se realizan unos ejercicios básicos de cartografía en R, para lo cual se realiza una preparación de los datos espaciales, que de manera general se resume en la integración de la información de casos reportados al marco geoestadístico nacional (estatal y municipal) para poder realizar los mapas consecuentes:
 ```{r eval=TRUE}
 s_mun <- st_read("SHP/municipios_2015.shp")
+s_ent <- st_read("SHP/estados_2015.shp")
 casos_mun <- count(datos3, CVEMUN = datos3$MUNICIPIO_RES)
+casos_ent <- count(datos3, CVE_ENT = datos3$ENTIDAD_RES)
+s_ent$CVE_ENT <- as.factor(d_entidad[[s_ent$CVE_ENT]])
+
+geo_ent <- left_join(s_ent, casos_ent)
+geo_ent$Casos_100k <- (geo_ent$n/geo_ent$pob_tot)*100000
+geo_ent$Casos_km2 <- (geo_ent$n/geo_ent$sup_km2)
 
 geo_mun <- left_join(s_mun, casos_mun)
 geo_mun$Casos_100k <- (geo_mun$n/geo_mun$pob_tot)*100000
@@ -448,14 +480,37 @@ Como se puede apreciar, se generan dos variables mas con base en los diagnóstic
 * Casos por cada 100 mil habitantes.  
 * Casos por kilómetro cuadrado.  
 
-Lo anterior con miras de tener información comparable entre las diferentes demarcaciones, sin caer en sesgos por la diferencia entre la superficie y población total de dichas entidades.
+Lo anterior con miras de tener información comparable entre las diferentes demarcaciones, sin caer en sesgos por la diferencia entre la superficie y población total de dichas entidades.  
+
+### República mexicana
+En el siguiente mapa se ilustra la distribución de los los casos positivos por cada 100 mil habitantes en las entidades federativas (estados) de México:
+```{r eval=TRUE, fig7, fig.height = 8, fig.width = 10, fig.align = "center"}
+tmap_mode("plot")
+mapa_mex <- tm_shape(geo_ent) + 
+   tm_polygons("Casos_100k", id = "CVE_ENT", palette = c("#FFF0EB", "#C88F00", "#640C00"), 
+               style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por cada \n100k habitantes") + 
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
+mapa_mex
+```
+
+Y en la siguiente gráfica los mismo valores de casos positivos por cada 100 mil habitantes para cada entidad federativa, organizados de mayor a menor:
+```{r eval=TRUE, fig8, fig.height = 10, fig.width = 8, fig.align = "center"}
+g_ent_100k <- ggdotchart(geo_ent, x = "CVE_ENT", y = "Casos_100k", color = "steelblue", sorting = "descending", 
+                         add = "segments", add.params = list(color = "lightgray", size = 2), rotate = TRUE, 
+                         dot.size = 8, label = round(geo_ent$Casos_100k), 
+                         font.label = list(face = "bold", color = "white", size = 10, vjust = 0.5), 
+                         ylab = "Casos por cada 100 mil habitantes", xlab = "Entidad", ggtheme = theme_pubr())
+g_ent_100k
+```
+
+### Mapas por entidad federativa {.tabset .tabset-fade}
 
 #### Ciudad de México (CDMX)
-```{r eval=TRUE, fig6, fig.height = 12, fig.width = 8, fig.align = "center"}
+```{r eval=TRUE, fig9, fig.height = 10, fig.width = 8, fig.align = "center"}
 tmap_mode("plot")
-bb_cdmx <- st_bbox(c(xmin = -99.4, xmax = -98.9, ymax = 19.64, ymin = 19))
 geo_cdmx <- filter(geo_mun, AREAS_GE_2 == "09")
-mapa_cdmx <- tm_shape(geo_cdmx, bbox = bb_cdmx) + 
+mapa_cdmx <- tm_shape(geo_cdmx) + 
    tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
                n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos", 
                title = "Casos por Km^2") + 
@@ -463,27 +518,72 @@ mapa_cdmx <- tm_shape(geo_cdmx, bbox = bb_cdmx) +
               n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos",
               palette="-RdYlBu", contrast=1, scale = 3, title.size="Casos totales", 
               title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
-   tm_compass() + tm_scale_bar() +
-   tm_grid(n.x = 3, n.y = 4)
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
 mapa_cdmx
 ```
 
-#### Jalisco (JAL)
-```{r eval=TRUE, fig7, fig.height = 8, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+#### Estado de México (MEX)
+```{r eval=TRUE, fig10, fig.height = 8, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
 tmap_mode("plot")
-bb_jal <- st_bbox(c(xmin = -106, xmax = -101.5, ymax = 22.9, ymin = 18.7))
+geo_edomex <- filter(geo_mun, AREAS_GE_2 == "15")
+mapa_edomex <- tm_shape(geo_edomex) + 
+   tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
+               n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por Km^2") + 
+   tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
+              n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette = c("#003399", "#FFFF00", "#FF3300"), contrast=1, scale = 2, title.size="Casos totales", 
+              title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
+mapa_edomex
+```
+
+#### Jalisco (JAL)
+```{r eval=TRUE, fig11, fig.height = 8, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+tmap_mode("plot")
 geo_jal <- filter(geo_mun, AREAS_GE_2 == "14")
-mapa_jal <- tm_shape(geo_jal, bbox = bb_jal) + 
+mapa_jal <- tm_shape(geo_jal) + 
    tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
                n = 5, style = "bclust", colorNA = "#EAEAEA", textNA = "Sin casos", 
                title = "Casos por Km^2") + 
    tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
-              n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos",
-              palette="-RdYlBu", contrast=1, scale = 1, title.size="Casos totales", 
+              n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette = c("#003399", "#FFFF00", "#FF3300"), contrast=1, scale = 1, title.size="Casos totales", 
               title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
-   tm_compass() + tm_scale_bar() +
-   tm_grid(n.x = 3, n.y = 4)
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
 mapa_jal
+```
+
+#### Sonora (SON)
+```{r eval=TRUE, fig12, fig.height = 8, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+tmap_mode("plot")
+geo_son <- filter(geo_mun, AREAS_GE_2 == "26")
+mapa_son <- tm_shape(geo_son) + 
+   tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
+               n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por Km^2") + 
+   tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
+              n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette = c("#003399", "#FFFF00", "#FF3300"), contrast=1, scale = 2, title.size="Casos totales", 
+              title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
+mapa_son
+```
+
+#### Quintana Roo (ROO)
+```{r eval=TRUE, fig13, fig.height = 10, fig.width = 8, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+tmap_mode("plot")
+geo_roo <- filter(geo_mun, AREAS_GE_2 == "23")
+mapa_roo <- tm_shape(geo_roo) + 
+   tm_polygons("Casos_km2", id = "CVEMUN", palette = c("#FFFF99", "#FFCC00", "#720606"), 
+               n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos", 
+               title = "Casos por Km^2") + 
+   tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
+              n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette = c("#003399", "#FFFF00", "#FF3300"), contrast=1, scale = 2, title.size="Casos totales", 
+              title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
+   tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4)
+mapa_roo
 ```
 
 Continuara...

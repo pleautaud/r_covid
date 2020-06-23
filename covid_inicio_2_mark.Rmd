@@ -35,6 +35,7 @@ library(reshape2)
 library(sf)
 library(tmap)
 library(runner)
+library(scales)
 ```
 
 ### Semilla para valores aleatorios.
@@ -46,7 +47,7 @@ set.seed(42)
 ### Importación de los datos:
 Se incorporan los datos descargados del portal de datos abiertos, los cuales consisten en un archivo delimitado por comas empleando la codificación unicode UTF-8
 ```{r eval=TRUE}
-datos <- read.csv("200529COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
+datos <- read.csv("200622COVID19MEXICO.csv", header = TRUE, encoding = "UTF-8")
 datos2 <- datos
 datos2$Num <- 1
 ```
@@ -521,8 +522,8 @@ mapa_cdmx <- tm_shape(geo_cdmx) +
                n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos", 
                title = "Casos por Km^2") + 
    tm_bubbles("n", col = "Casos_100k", border.col = "black", border.alpha = .5,
-              n = 5, style = "pretty", colorNA = "#EAEAEA", textNA = "Sin casos",
-              palette="-RdYlBu", contrast=1, scale = 3, title.size="Casos totales", 
+              n = 5, style = "jenks", colorNA = "#EAEAEA", textNA = "Sin casos",
+              palette= c("#003399", "#FFFF00", "#FF3300"), contrast=1, scale = 3, title.size="Casos totales", 
               title.col="Casos por cada \n100k habitantes", id="CVEMUN") + 
    tm_compass() + tm_scale_bar() + tm_grid(n.x = 3, n.y = 4) + tm_legend(legend.outside = TRUE)
 mapa_cdmx
@@ -642,6 +643,23 @@ mapa_mor <- tm_shape(geo_mor) +
 mapa_mor
 ```
   
+### Relación entre casos por superficie y por población total
+La siguiente gráfica muestra la correlación existente entre los datos positivos detectados por cada cien mil habitantes y por kilometro cuadrado, en los cien municipios con mayor numero de casos netos detectados:
+```{r eval=TRUE,fig26, fig.height = 8, fig.width = 10, fig.align = "center", results='hide', message=FALSE, warning=FALSE}
+geo_mun2 <- top_n(geo_mun, 100, geo_mun$n)
+geo_mun2$Casos_100k_km2 <- geo_mun2$Casos_100k/geo_mun2$sup_km2
+
+ggscatter(geo_mun2, x = "Casos_km2", y = "Casos_100k", size = "n", color = "Casos_100k_km2", 
+          add = "reg.line", conf.int = TRUE, add.params = list(color = "steelblue", fill = "lightgray"),
+          label = "NOM_MUN", repel = TRUE, label.select = list(criteria = "`Casos_100k_km2` > 1 | `Casos_100k` > 400"), 
+          font.label = c(10, "bold.italic", "grey20"), ggtheme = theme_light(),
+          title = "Correlación entre los casos por kilómetro cuadrado y por cada 100 mil habitantes",
+          subtitle = "Considerando los 100 municipios con mayor número de casos positivos",
+          xlab = "Casos por kilometro cuadrado (en escala log2)", ylab = "Casos por cada cien mil habitantes") + 
+   scale_size(range = c(0.5, 15)) + gradient_color(c("#003399", "#FFFF00", "#FF3300")) + xscale("log2", .format = TRUE) + 
+   labs(n = "Casos totales", Casos_100k_km2 = "Casos por cada 100k habitantes por km^2")
+```
+
 # Análisis de datos para la CDMX
 En consideración del número de casos reportados, así como por ser la capital del país, se realiza una evaluación de los datos reportados para la Ciudad de México (CDMX), para lo cual se realiza una filtro de la tabla procesada, separando los datos reportados por la unidades medicas de la CDMX:  
 ```{r eval=TRUE}
@@ -790,9 +808,10 @@ resumen_cmx_t <- head(resumen_cmx_t, nrow(resumen_cmx_t) - 7)
 resumen_cmx_t2 <- melt(resumen_cmx_t, "FECHA_INGRESO")
 g_alc_cmx <- ggline(resumen_cmx_t2,"FECHA_INGRESO", "value", shape = "variable", color = "variable",
                     title = "Evolución de los casos SARS-CoV2 activos en las alcaldías de la CDMX",
-                    subtitle = "Considerando los casos positivios detectados en los últimos 15 días",
+                    subtitle = "Casos positivios detectados en una ventana de 15 días previos",
                     xlab = "Fecha", ylab = "Casos activos acumulados (últimos 15 días)", 
-                    ggtheme = theme_light(), legend.title = "Alcaldía")
+                    ggtheme = theme_light(), legend.title = "Alcaldía") + 
+  scale_x_date(date_breaks = "2 weeks" , date_labels = "%b %d")
 g_alc_cmx
 ```
   
@@ -819,9 +838,10 @@ resumen_cmx_t_100k$VCA <- round((resumen_cmx_t_100k$VCA * 100000) / 427263, 1)
 resumen_cmx_t_100k2 <- melt(resumen_cmx_t_100k, "FECHA_INGRESO")
 g_alc_cmx_100k <- ggline(resumen_cmx_t_100k2,"FECHA_INGRESO", "value", shape = "variable", color = "variable", 
                     title = "Evolución de los casos SARS-CoV2 activos en las alcaldías de la CDMX", 
-                    subtitle = "Considerando los casos positivios detectados en los últimos 15 días",
-                    xlab = "Fecha", ylab = "Casos activos acumulados (por cada 100 mil habitantes)", ggtheme = theme_light(), 
-                    legend.title = "Alcaldía")
+                    subtitle = "Casos positivios detectados en una ventana de 15 días previos, por cada 100k habitantes",
+                    xlab = "Fecha", ylab = "Casos activos acumulados (por cada 100 mil habitantes)", 
+                    ggtheme = theme_light(), legend.title = "Alcaldía") + 
+  scale_x_date(date_breaks = "2 weeks" , date_labels = "%b %d")
 g_alc_cmx_100k
 ```
   
